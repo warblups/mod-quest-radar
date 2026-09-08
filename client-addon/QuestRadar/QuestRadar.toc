@@ -1,0 +1,10 @@
+## Interface: 30300
+## Title: QuestRadar
+## Notes: Shows on the minimap the quest objectives known by the server (mod-quest-radar AzerothCore module). See this folder's README.md.
+## Author: mod-quest-radar
+## Version: 0.3.0
+## SavedVariables: QuestRadarDB
+
+Core.lua
+Minimap.lua
+Options.lua

@@ -1,0 +1,1 @@
+Create a module like questhelper or questie showing quest areas (like around WoW 5.4.8) on the minimap for WoW 3.3.5a AzerothCore

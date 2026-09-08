@@ -1,0 +1,55 @@
+#
+# Copyright (C) 2016+ AzerothCore <www.azerothcore.org>, released under GNU AGPL v3 license: https://github.com/azerothcore/azerothcore-wotlk/blob/master/LICENSE-AGPL3
+#
+
+[worldserver]
+
+###############################################################################
+#   mod-questradar.conf
+#   AzerothCore module - Quest objective location (server side)
+###############################################################################
+
+#
+#    QuestRadar.Enable
+#        Description: General on/off switch for the module.
+#        Default:     1 - Enabled
+#                      0 - Disabled
+#
+
+QuestRadar.Enable = 1
+
+#
+#    QuestRadar.AnnounceOnAccept
+#        Description: Automatically announces in chat, as soon as a quest is
+#                      accepted, the known objectives nearest to the player's
+#                      current map (`quest_poi` / `quest_poi_points` tables).
+#        Default:     1 - Enabled
+#                      0 - Disabled (the player can still use .questradar)
+#
+
+QuestRadar.AnnounceOnAccept = 1
+
+#
+#    QuestRadar.MaxObjectivesShown
+#        Description: Maximum number of objectives shown per announce or per
+#                      .questradar / .qr command.
+#        Default:     3
+#
+
+QuestRadar.MaxObjectivesShown = 3
+
+#
+#    QuestRadar.AddonSyncEnabled
+#        Description: Enables the server<->addon communication bridge
+#                      (CHAT_MSG_ADDON / LANG_ADDON) used by the QuestRadar
+#                      client addon (client-addon/QuestRadar/) to show
+#                      objectives on the minimap and world map. Without the
+#                      addon installed client-side, this setting has no
+#                      visible effect (the client simply ignores unclaimed
+#                      messages).
+#        Default:     1 - Enabled
+#                      0 - Disabled (chat features remain available
+#                          regardless of this setting)
+#
+
+QuestRadar.AddonSyncEnabled = 1
