@@ -1,5 +1,7 @@
 # mod-quest-radar
 
+*[Lire en français](README.fr.md)*
+
 Native C++ module for **AzerothCore 3.3.5a** that helps a player locate the
 objectives of their current quests (area/coordinates), in the spirit of
 QuestHelper / Questie — with, in addition to the server module, a
