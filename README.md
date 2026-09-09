@@ -6,6 +6,12 @@ QuestHelper / Questie — with, in addition to the server module, a
 companion **client addon** that shows these objectives as icons on the
 **minimap** (see [`client-addon/QuestRadar/`](client-addon/QuestRadar)).
 
+## Screenshots
+
+| Minimap icon (numbered objective + area) | In-game view |
+|---|---|
+| ![Minimap icon closeup](scrn/minimap-icon-closeup.jpg) | ![In-game view](scrn/ingame-view.jpg) |
+
 ## Why two parts (server module + client addon)
 
 An AzerothCore C++ module runs **server-side**, inside `worldserver`. It
