@@ -104,10 +104,13 @@ local function GetHolder(index)
     local holder = holders[index]
     if not holder then
         holder = CreateFrame("Frame", nil, Minimap)
-        holder:SetFrameLevel(Minimap:GetFrameLevel() + 10)
         holder:Hide()
         holders[index] = holder
     end
+    -- Recomputed every time, not just at creation: UI suites raise the minimap
+    -- after we start (ElvUI does Minimap:SetFrameLevel(+2) in its Initialize),
+    -- which would otherwise leave our icons buried under it.
+    holder:SetFrameLevel(Minimap:GetFrameLevel() + 10)
     -- Astrolabe reads GetWidth() to inset the icon from the minimap edge.
     local size = POI_SIZE * DB.scale
     holder:SetWidth(size)
