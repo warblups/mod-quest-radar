@@ -28,7 +28,7 @@ to get wrong on this client, and that broke earlier versions:
     it rather than approximated here.
 ---------------------------------------------------------------------------]]--
 
-local VERSION = "0.4.0"
+local VERSION = "0.5.0"
 
 local POI_PARENT_NAME = "QuestRadarPOIFrame"
 local MAX_POIS = 32     -- UI-QuestPoi-NumberIcons only carries the numbers 1..32
@@ -44,6 +44,11 @@ local DEFAULTS = {
     onlyTracked = true,
     scale = 1,
 }
+
+-- Minimal shared namespace, so Options.lua can read the settings and ask for
+-- them to be applied. Everything else stays local to this file.
+QuestRadar = QuestRadar or {}
+local QR = QuestRadar
 
 local DB
 local Astrolabe
@@ -65,6 +70,9 @@ local function InitDB()
         end
     end
     DB = QuestRadarDB
+    -- Re-point every time: SavedVariables are restored after this file runs,
+    -- which replaces the global table wholesale.
+    QR.db = DB
 end
 
 -- !Astrolabe keeps itself out of the global namespace, so it has to be pulled
@@ -371,6 +379,18 @@ local function ApplyScale()
         holder:SetWidth(size)
         holder:SetHeight(size)
         if holder.poi then holder.poi:SetScale(DB.scale) end
+    end
+end
+
+-- Single entry point for Options.lua: re-read the settings and make the
+-- minimap match them straight away.
+function QR.ApplySettings()
+    InitDB()
+    ApplyScale()
+    if DB.enabled then
+        Invalidate()
+    else
+        ReleaseAll()
     end
 end
 

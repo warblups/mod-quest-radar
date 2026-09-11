@@ -32,6 +32,16 @@ Copy the folder containing `QuestRadar.toc` and `QuestRadar.lua` into
 After a *first* install, restart the client fully rather than `/reload` — this
 client only picks up new files at startup.
 
+## Settings
+
+Two equivalent ways in, both writing the same `QuestRadarDB`:
+
+- **Esc > Interface > AddOns > QuestRadar** — a native panel built from stock
+  Blizzard widgets (`InterfaceOptionsCheckButtonTemplate`,
+  `OptionsSliderTemplate`), no Ace3 and no third-party dependency. There is no
+  Okay/Cancel: every control applies immediately.
+- The `/qr` commands below.
+
 ## Commands
 
 | Command | Effect |
