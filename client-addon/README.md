@@ -58,8 +58,29 @@ which needs that centre and radius **as numbers**. Only the server module
 provides them (`areaX`/`areaY`). This is now the module's strongest
 justification.
 
-## Where this is heading
+## The hybrid
 
-The intended end state is a single addon that works standalone and upgrades
-itself to per-objective icons when it detects the server module on the realm
-— `Core.lua` already performs that handshake. That merge is not done yet.
+`QuestRadar/` now does both. `Sync.lua` asks the module for a sync; if an answer
+comes back it draws **one icon per objective group**, and if none ever does it
+stays on the client's own POI data with no message and no penalty. `/qr module`
+turns the upgrade off, and `/qr status` says which source is live.
+
+Both sources feed a single renderer. The module speaks world yards and the rest
+of the addon speaks normalised map coordinates, but absolute positions are never
+needed: the player exists in both frames, so a delta converts between them, with
+the zone's size in yards coming from Astrolabe's public `ComputeDistance`. Every
+icon therefore goes through the same `PlaceIconOnMinimap` call, and zoom,
+rotation, minimap shape, edge clamping and the Blizzard artwork are written once.
+
+Two behaviours inherited from the bridge-based variant, both of which it learned
+the hard way in-game: icons point at a group's **stable centre** (`areaX`/`areaY`)
+rather than its nearest point, which otherwise makes them jump between points as
+the player moves; and a group with a negative `objectiveIndex` — the `quest_poi`
+convention for "not a numbered objective" — is only drawn once the quest is
+complete, as the turn-in icon, because a numberless badge reads as a native NPC
+blip.
+
+Icon *numbers* stay sequential rather than following `objectiveIndex`:
+`QuestPOI_DisplayButton` caches its buttons by index, so two objectives sharing a
+number would share a button. The module's gain is the number of icons, not what
+is written in them.

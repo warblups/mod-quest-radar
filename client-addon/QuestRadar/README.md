@@ -14,10 +14,14 @@ Only one: a server whose world database has the `quest_poi` table populated
 (stock AzerothCore does). If the world map shows no numbered circles either,
 the data is missing server-side — no client addon can invent it.
 
-**No server module, and nothing else to install.** Astrolabe — which converts a
-normalised map coordinate into a minimap offset, handling zoom, rotation,
-minimap shape and edge clamping — ships inside the addon under
-`Libs/Astrolabe/`. If you also run the standalone `!Astrolabe` addon, DongleStub
+**No server module needed, and nothing else to install.** If the realm happens
+to run [`mod-quest-radar`](../../README.md), the addon detects it and upgrades
+itself to one icon per *objective* instead of one per quest — see
+[`../README.md`](../README.md). Without it, nothing is lost and nothing is said.
+
+Astrolabe is bundled too — it converts a normalised map coordinate into a
+minimap offset, handling zoom, rotation, minimap shape and edge clamping, and
+ships inside the addon under `Libs/Astrolabe/`. If you also run the standalone `!Astrolabe` addon, DongleStub
 keeps whichever copy is newer and the other stands down; there is no conflict.
 See [`Libs/Astrolabe/README.md`](Libs/Astrolabe/README.md) for its origin and
 licence.
@@ -49,6 +53,7 @@ Two equivalent ways in, both writing the same `QuestRadarDB`:
 | `/qr` | Toggle the radar |
 | `/qr on` / `/qr off` | Enable / disable explicitly |
 | `/qr status` | Diagnostic: Astrolabe found, current map, quests, POIs reported, icons placed |
+| `/qr module` | Use the `mod-quest-radar` server module when the realm has it (default on) |
 | `/qr tracked` | `on` (default): only quests checked in the objectives tracker. `off`: every quest on the map |
 | `/qr completed` | Show or hide turn-in (`?`) icons for completed quests |
 | `/qr edge` | Show or hide objectives that are out of range (clamped to the minimap rim) |

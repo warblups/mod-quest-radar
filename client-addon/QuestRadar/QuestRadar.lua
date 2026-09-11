@@ -28,7 +28,7 @@ to get wrong on this client, and that broke earlier versions:
     it rather than approximated here.
 ---------------------------------------------------------------------------]]--
 
-local VERSION = "0.6.0"
+local VERSION = "0.7.0"
 
 local POI_PARENT_NAME = "QuestRadarPOIFrame"
 local MAX_POIS = 32     -- UI-QuestPoi-NumberIcons only carries the numbers 1..32
@@ -42,6 +42,7 @@ local DEFAULTS = {
     showCompleted = true,
     showOffscreen = true,
     onlyTracked = true,
+    useModule = true,   -- use the mod-quest-radar server module when present
     scale = 1,
 }
 
@@ -185,7 +186,7 @@ end
 -- Refresh
 --------------------------------------------------------------------------------
 
-local lastCounts = { quests = 0, pois = 0, placed = 0 }
+local lastCounts = { quests = 0, pois = 0, placed = 0, source = "client" }
 
 -- Mirrors WorldMapFrame_UpdateQuests: a negative isComplete means the quest
 -- failed, and a quest with no objectives is complete once the gold is there.
@@ -201,6 +202,118 @@ local function IsQuestComplete(questLogIndex, isComplete)
         return true
     end
     return false
+end
+
+-- One entry per icon to draw, whichever source produced it:
+--   { questID, questLogIndex, title, posX, posY, complete }
+-- with posX/posY normalised (0-1) to the current map. Keeping both sources in
+-- this one shape is the whole point: the drawing below, and with it Astrolabe's
+-- zoom/rotation/shape/edge handling and Blizzard's own artwork, is written once.
+
+-- The client only ever reports one POI per quest.
+local function CollectNative()
+    -- QuestPOIUpdateIcons() must come between the rebuild and the first
+    -- QuestPOIGetIconInfo() read - that is the order WorldMapFrame_UpdateQuests()
+    -- uses, and without it the icon info comes back empty.
+    local numPOIs = QuestMapUpdateAllQuests() or 0
+    QuestPOIUpdateIcons()
+
+    local out = {}
+    for i = 1, numPOIs do
+        local questID, questLogIndex = QuestPOIGetQuestIDByVisibleIndex(i)
+        if questID and questLogIndex and questLogIndex > 0 then
+            local _, posX, posY = QuestPOIGetIconInfo(questID)
+            if posX and posY and (posX > 0 or posY > 0) then
+                local title, _, _, _, isHeader, _, isComplete = GetQuestLogTitle(questLogIndex)
+                if not isHeader then
+                    out[#out + 1] = {
+                        questID = questID,
+                        questLogIndex = questLogIndex,
+                        title = title,
+                        posX = posX,
+                        posY = posY,
+                        complete = IsQuestComplete(questLogIndex, isComplete),
+                    }
+                end
+            end
+        end
+    end
+    return out, numPOIs
+end
+
+local function QuestLogIndexByID()
+    local byID = {}
+    for i = 1, GetNumQuestLogEntries() or 0 do
+        local _, _, _, _, isHeader, _, _, _, questID = GetQuestLogTitle(i)
+        if not isHeader and questID and questID > 0 then
+            byID[questID] = i
+        end
+    end
+    return byID
+end
+
+-- The module reports one entry per objective group, which is what the client
+-- cannot do. Returns nil when there is nothing usable, so the caller falls
+-- back to CollectNative.
+local function CollectServer(lib, continent, zone)
+    local data = QR.GetServerData and QR.GetServerData()
+    if not data or not data.objectives or #data.objectives == 0 then return nil end
+
+    local pC, pZ, px, py = lib:GetCurrentPlayerPosition()
+    if not pC or pC ~= continent or pZ ~= zone or not px then return nil end
+
+    -- The module speaks world yards; the rest of this addon speaks normalised
+    -- map coordinates. We never need absolute positions to bridge the two: the
+    -- player exists in both frames, so a delta suffices. Zone dimensions come
+    -- from Astrolabe's public ComputeDistance - the corner-to-corner deltas of
+    -- the normalised map are its size in yards.
+    local _, zoneW = lib:ComputeDistance(continent, zone, 0, 0, continent, zone, 1, 0)
+    local _, _, zoneH = lib:ComputeDistance(continent, zone, 0, 0, continent, zone, 0, 1)
+    if not zoneW or not zoneH or zoneW <= 0 or zoneH <= 0 then return nil end
+
+    local byID = QuestLogIndexByID()
+    local out = {}
+
+    for _, obj in ipairs(data.objectives) do
+        local questLogIndex = obj.questId and byID[obj.questId]
+        if questLogIndex then
+            local _, _, _, _, _, _, isComplete = GetQuestLogTitle(questLogIndex)
+            local complete = IsQuestComplete(questLogIndex, isComplete)
+
+            -- A negative objectiveIndex is the quest_poi convention for "not a
+            -- numbered objective", typically a turn-in spot. Drawing it as a
+            -- numberless badge was tried in the bridge-based variant and read
+            -- as a native NPC blip, so it is only worth showing as the turn-in
+            -- icon, and only once the quest is actually complete.
+            local numbered = (obj.objectiveIndex or -1) >= 0
+            if numbered or complete then
+                -- Point at the group's stable centre rather than its nearest
+                -- point: within a scattered group the nearest point changes as
+                -- the player moves, which made the icon appear to flee.
+                local ox = (obj.areaRadius and obj.areaRadius > 0 and obj.areaX) or obj.x
+                local oy = (obj.areaRadius and obj.areaRadius > 0 and obj.areaY) or obj.y
+                if ox and oy then
+                    -- WoW world axes: +X is north, +Y is west. So map east is
+                    -- -deltaY and map south is -deltaX. Getting this wrong put
+                    -- objectives in the opposite corner once already; see
+                    -- ComputeMinimapDelta in the bridge-based variant.
+                    local east  = data.playerY - oy
+                    local north = ox - data.playerX
+                    out[#out + 1] = {
+                        questID = obj.questId,
+                        questLogIndex = questLogIndex,
+                        title = obj.title,
+                        posX = px + east / zoneW,
+                        posY = py - north / zoneH,
+                        complete = complete,
+                    }
+                end
+            end
+        end
+    end
+
+    if #out == 0 then return nil end
+    return out
 end
 
 -- Returns false when it could not run and should be retried.
@@ -234,57 +347,54 @@ local function Refresh()
         return true
     end
 
-    -- QuestPOIUpdateIcons() must come between the rebuild and the first
-    -- QuestPOIGetIconInfo() read - that is the order WorldMapFrame_UpdateQuests()
-    -- uses, and without it the icon info comes back empty.
-    local numPOIs = QuestMapUpdateAllQuests() or 0
-    QuestPOIUpdateIcons()
+    -- The module's richer data when it is there, the client's own otherwise.
+    local entries, numPOIs = CollectServer(lib, continent, zone)
+    local source = "module"
+    if not entries then
+        entries, numPOIs = CollectNative()
+        source = "client"
+    end
 
     local numeric, completeIn, placed = 0, 0, 0
 
-    for i = 1, numPOIs do
+    for _, entry in ipairs(entries) do
         if placed >= MAX_POIS then break end
-        local questID, questLogIndex = QuestPOIGetQuestIDByVisibleIndex(i)
-        if questID and questLogIndex and questLogIndex > 0 then
-            local _, posX, posY = QuestPOIGetIconInfo(questID)
-            if posX and posY and (posX > 0 or posY > 0) then
-                local title, _, _, _, isHeader, _, isComplete = GetQuestLogTitle(questLogIndex)
-                local complete = IsQuestComplete(questLogIndex, isComplete)
-                local tracked = not DB.onlyTracked or IsQuestWatched(questLogIndex)
-                -- The counters only advance for quests we actually draw, so the
-                -- numbers match the objectives tracker sitting next to the
-                -- minimap. That is what WatchFrame does too; the world map
-                -- numbers every quest on the map instead, so the two can differ
-                -- when something is untracked.
-                if tracked and not isHeader and (not complete or DB.showCompleted) then
-                    local button
-                    if complete then
-                        completeIn = completeIn + 1
-                        button = QuestPOI_DisplayButton(POI_PARENT_NAME, QUEST_POI_COMPLETE_IN, completeIn, questID)
-                    else
-                        numeric = numeric + 1
-                        button = QuestPOI_DisplayButton(POI_PARENT_NAME, QUEST_POI_NUMERIC, numeric, questID)
-                    end
-                    if button then
-                        local holder = GetHolder(placed + 1)
-                        AttachPOI(holder, button, questLogIndex, title)
-                        if lib:PlaceIconOnMinimap(holder, continent, zone, posX, posY) == 0 then
-                            placed = placed + 1
-                            active[holder] = true
-                        else
-                            holder:Hide()
-                            button:Hide()
-                            holder.poi = nil
-                        end
-                    end
+
+        local tracked = not DB.onlyTracked or IsQuestWatched(entry.questLogIndex)
+        if tracked and (not entry.complete or DB.showCompleted) then
+            -- The counters only advance for icons we actually draw, so the
+            -- numbers match the objectives tracker sitting next to the minimap.
+            -- That is what WatchFrame does too; the world map numbers every
+            -- quest on the map instead, so the two can differ when something is
+            -- untracked. They are labels, not identities - the module's gain is
+            -- the number of icons, not what is written in them.
+            local button
+            if entry.complete then
+                completeIn = completeIn + 1
+                button = QuestPOI_DisplayButton(POI_PARENT_NAME, QUEST_POI_COMPLETE_IN, completeIn, entry.questID)
+            else
+                numeric = numeric + 1
+                button = QuestPOI_DisplayButton(POI_PARENT_NAME, QUEST_POI_NUMERIC, numeric, entry.questID)
+            end
+            if button then
+                local holder = GetHolder(placed + 1)
+                AttachPOI(holder, button, entry.questLogIndex, entry.title)
+                if lib:PlaceIconOnMinimap(holder, continent, zone, entry.posX, entry.posY) == 0 then
+                    placed = placed + 1
+                    active[holder] = true
+                else
+                    holder:Hide()
+                    button:Hide()
+                    holder.poi = nil
                 end
             end
         end
     end
 
     lastCounts.quests = GetNumQuestLogEntries() or 0
-    lastCounts.pois = numPOIs
+    lastCounts.pois = numPOIs or #entries
     lastCounts.placed = placed
+    lastCounts.source = source
     refreshing = false
     return true
 end
@@ -317,6 +427,7 @@ end
 local function Invalidate()
     pending = true
 end
+QR.Invalidate = Invalidate
 
 --------------------------------------------------------------------------------
 -- Driver
@@ -407,9 +518,12 @@ local function Status()
     Print("carte: continent=" .. tostring(continent) .. " zone=" .. tostring(zone)
         .. " (" .. tostring(GetZoneText()) .. ")")
     Print("quetes=" .. lastCounts.quests
-        .. " | POI annonces par le client=" .. lastCounts.pois
+        .. " | objectifs annonces=" .. lastCounts.pois
         .. " | icones placees=" .. lastCounts.placed
         .. " | filtre=" .. (DB.onlyTracked and "quetes suivies" or "toutes"))
+    Print("source=" .. lastCounts.source
+        .. " | module serveur=" .. (not DB.useModule and "desactive"
+            or (QR.moduleSeen and "detecte" or "pas de reponse")))
     if lastCounts.pois == 0 then
         Print("0 POI: si la carte du monde n affiche pas non plus de pastilles numerotees, "
             .. "la table quest_poi du monde est vide cote serveur.")
@@ -451,6 +565,10 @@ SlashCmdList["QUESTRADAR"] = function(msg)
         Print(DB.onlyTracked
             and "seules les quetes suivies sont affichees"
             or "toutes les quetes de la zone sont affichees")
+    elseif cmd == "module" then
+        DB.useModule = not DB.useModule
+        Invalidate()
+        Print("module serveur: " .. (DB.useModule and "utilise si present" or "ignore"))
     elseif cmd == "edge" or cmd == "arrows" then
         DB.showOffscreen = not DB.showOffscreen
         Print("objectifs hors de portee (colles au bord): "
@@ -466,6 +584,6 @@ SlashCmdList["QUESTRADAR"] = function(msg)
             Print("echelle: une valeur entre 0.5 et 3")
         end
     else
-        Print("/qr [on|off] | status | tracked | completed | edge | scale <0.5-3>")
+        Print("/qr [on|off] | status | tracked | completed | edge | module | scale <0.5-3>")
     end
 end
