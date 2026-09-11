@@ -41,6 +41,7 @@ local DEFAULTS = {
     enabled = true,
     showCompleted = true,
     showOffscreen = true,
+    onlyTracked = true,
     scale = 1,
 }
 
@@ -238,7 +239,13 @@ local function Refresh()
             if posX and posY and (posX > 0 or posY > 0) then
                 local title, _, _, _, isHeader, _, isComplete = GetQuestLogTitle(questLogIndex)
                 local complete = IsQuestComplete(questLogIndex, isComplete)
-                if not isHeader and (not complete or DB.showCompleted) then
+                local tracked = not DB.onlyTracked or IsQuestWatched(questLogIndex)
+                -- The counters only advance for quests we actually draw, so the
+                -- numbers match the objectives tracker sitting next to the
+                -- minimap. That is what WatchFrame does too; the world map
+                -- numbers every quest on the map instead, so the two can differ
+                -- when something is untracked.
+                if tracked and not isHeader and (not complete or DB.showCompleted) then
                     local button
                     if complete then
                         completeIn = completeIn + 1
@@ -344,6 +351,14 @@ driver:RegisterEvent("QUEST_WATCH_UPDATE")
 driver:RegisterEvent("ZONE_CHANGED")
 driver:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 
+-- Checking or unchecking a quest in the tracker fires no event on 3.3.5a:
+-- QUEST_WATCH_LIST_CHANGED is a Cataclysm event and is absent from wow.exe
+-- 12340. Blizzard's own UI calls AddQuestWatch/RemoveQuestWatch directly
+-- (QuestLogFrame.lua, WatchFrame.lua, WorldMapFrame.lua), so hooking the two
+-- is the only way to react immediately.
+hooksecurefunc("AddQuestWatch", Invalidate)
+hooksecurefunc("RemoveQuestWatch", Invalidate)
+
 InitDB()
 
 --------------------------------------------------------------------------------
@@ -370,7 +385,8 @@ local function Status()
         .. " (" .. tostring(GetZoneText()) .. ")")
     Print("quetes=" .. lastCounts.quests
         .. " | POI annonces par le client=" .. lastCounts.pois
-        .. " | icones placees=" .. lastCounts.placed)
+        .. " | icones placees=" .. lastCounts.placed
+        .. " | filtre=" .. (DB.onlyTracked and "quetes suivies" or "toutes"))
     if lastCounts.pois == 0 then
         Print("0 POI: si la carte du monde n affiche pas non plus de pastilles numerotees, "
             .. "la table quest_poi du monde est vide cote serveur.")
@@ -406,6 +422,12 @@ SlashCmdList["QUESTRADAR"] = function(msg)
         DB.showCompleted = not DB.showCompleted
         Invalidate()
         Print("quetes terminees: " .. (DB.showCompleted and "affichees" or "masquees"))
+    elseif cmd == "tracked" then
+        DB.onlyTracked = not DB.onlyTracked
+        Invalidate()
+        Print(DB.onlyTracked
+            and "seules les quetes suivies sont affichees"
+            or "toutes les quetes de la zone sont affichees")
     elseif cmd == "edge" or cmd == "arrows" then
         DB.showOffscreen = not DB.showOffscreen
         Print("objectifs hors de portee (colles au bord): "
@@ -421,6 +443,6 @@ SlashCmdList["QUESTRADAR"] = function(msg)
             Print("echelle: une valeur entre 0.5 et 3")
         end
     else
-        Print("/qr [on|off] | status | completed | edge | scale <0.5-3>")
+        Print("/qr [on|off] | status | tracked | completed | edge | scale <0.5-3>")
     end
 end
