@@ -7,4 +7,5 @@
 ## OptionalDeps: !Astrolabe
 
 QuestRadar.lua
+Blobs.lua
 Options.lua

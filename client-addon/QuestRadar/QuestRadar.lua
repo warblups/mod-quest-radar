@@ -43,6 +43,8 @@ local DEFAULTS = {
     showOffscreen = true,
     onlyTracked = true,
     scale = 1,
+    showBlobs = false,   -- prototype, see Blobs.lua
+    blobAlpha = 96,
 }
 
 -- Minimal shared namespace, so Options.lua can read the settings and ask for
@@ -86,6 +88,7 @@ local function GetAstrolabe()
     end
     return Astrolabe
 end
+QR.GetAstrolabe = GetAstrolabe
 
 --------------------------------------------------------------------------------
 -- Icon plumbing
@@ -179,6 +182,7 @@ local function ReleaseAll()
     if QuestPOI_HideAllButtons then
         QuestPOI_HideAllButtons(POI_PARENT_NAME)
     end
+    if QR.HideBlobs then QR.HideBlobs() end
 end
 
 --------------------------------------------------------------------------------
@@ -241,6 +245,7 @@ local function Refresh()
     QuestPOIUpdateIcons()
 
     local numeric, completeIn, placed = 0, 0, 0
+    local drawn = {}
 
     for i = 1, numPOIs do
         if placed >= MAX_POIS then break end
@@ -271,6 +276,7 @@ local function Refresh()
                         if lib:PlaceIconOnMinimap(holder, continent, zone, posX, posY) == 0 then
                             placed = placed + 1
                             active[holder] = true
+                            drawn[#drawn + 1] = questID
                         else
                             holder:Hide()
                             button:Hide()
@@ -280,6 +286,10 @@ local function Refresh()
                 end
             end
         end
+    end
+
+    if QR.UpdateBlobs then
+        QR.UpdateBlobs(drawn, continent, zone)
     end
 
     lastCounts.quests = GetNumQuestLogEntries() or 0
@@ -451,6 +461,11 @@ SlashCmdList["QUESTRADAR"] = function(msg)
         Print(DB.onlyTracked
             and "seules les quetes suivies sont affichees"
             or "toutes les quetes de la zone sont affichees")
+    elseif cmd == "blobs" then
+        DB.showBlobs = not DB.showBlobs
+        Invalidate()
+        Print("zones de recherche (prototype): "
+            .. (DB.showBlobs and "affichees" or "masquees"))
     elseif cmd == "edge" or cmd == "arrows" then
         DB.showOffscreen = not DB.showOffscreen
         Print("objectifs hors de portee (colles au bord): "
@@ -466,6 +481,6 @@ SlashCmdList["QUESTRADAR"] = function(msg)
             Print("echelle: une valeur entre 0.5 et 3")
         end
     else
-        Print("/qr [on|off] | status | tracked | completed | edge | scale <0.5-3>")
+        Print("/qr [on|off] | status | tracked | completed | edge | blobs | scale <0.5-3>")
     end
 end

@@ -63,10 +63,13 @@ local showCompleted = CreateCheckbox("showCompleted", onlyTracked, "Afficher les
 local showOffscreen = CreateCheckbox("showOffscreen", showCompleted, "Afficher les objectifs hors de portee",
     "Les objectifs trop loin se collent au bord du minimap, legerement attenues.")
 
+local showBlobs = CreateCheckbox("showBlobs", showOffscreen, "Zones de recherche (prototype)",
+    "Dessine la zone translucide que la carte du monde affiche pour un objectif imprecis. Experimental : peut deborder du minimap.")
+
 -- Icon size. The slider is only committed on release: dragging it would
 -- otherwise rebuild every icon on each pixel of travel.
 local scale = CreateFrame("Slider", "QuestRadarOptionsScale", panel, "OptionsSliderTemplate")
-scale:SetPoint("TOPLEFT", showOffscreen, "BOTTOMLEFT", 6, -24)
+scale:SetPoint("TOPLEFT", showBlobs, "BOTTOMLEFT", 6, -24)
 scale:SetMinMaxValues(0.5, 3)
 scale:SetValueStep(0.1)
 scale:SetWidth(200)
