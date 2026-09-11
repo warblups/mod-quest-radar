@@ -28,7 +28,7 @@ to get wrong on this client, and that broke earlier versions:
     it rather than approximated here.
 ---------------------------------------------------------------------------]]--
 
-local VERSION = "0.8.0"
+local VERSION = "0.8.1"
 
 local POI_PARENT_NAME = "QuestRadarPOIFrame"
 local MAX_POIS = 32     -- UI-QuestPoi-NumberIcons only carries the numbers 1..32
@@ -103,6 +103,14 @@ end
 -- button, and a quest with three objectives needs three icons all carrying that
 -- quest's number.
 local poiParents = {}
+
+-- Every POI button we have ever shown. We hide these ourselves rather than call
+-- QuestPOI_HideAllButtons: that helper walks 1..QUEST_POI_BUTTONS_MAX and
+-- indexes each name blindly, which assumes indices were allocated densely from
+-- 1. Blizzard always does; we do not, because a button's index IS the number it
+-- displays, so a parent may only ever hold index 4. The helper then trips over
+-- the missing 1..3 (QuestPOI.lua:218, "attempt to index local 'poiButton'").
+local ownedButtons = {}
 
 local function POIParent(slot)
     local name = POI_PARENT_NAME .. slot
@@ -192,10 +200,8 @@ local function ReleaseAll()
         holder.poi = nil
     end
     table.wipe(active)
-    if QuestPOI_HideAllButtons then
-        for slot in pairs(poiParents) do
-            QuestPOI_HideAllButtons(POI_PARENT_NAME .. slot)
-        end
+    for button in pairs(ownedButtons) do
+        button:Hide()
     end
 end
 
@@ -431,6 +437,7 @@ local function Refresh()
                 button = QuestPOI_DisplayButton(parent, QUEST_POI_NUMERIC, number, entry.questID)
             end
             if button then
+                ownedButtons[button] = true
                 local holder = GetHolder(placed + 1)
                 AttachPOI(holder, button, entry.questLogIndex, entry.title)
                 if lib:PlaceIconOnMinimap(holder, continent, zone, entry.posX, entry.posY) == 0 then
