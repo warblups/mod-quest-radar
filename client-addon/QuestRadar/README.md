@@ -10,18 +10,17 @@ same data and the very same artwork.
 
 ## Requirements
 
-- `Interface\AddOns\!Astrolabe` — installed **and enabled**. Quest POIs come
-  back as coordinates normalised to the zone map, and turning that into minimap
-  pixels needs the zone's size in yards, which this client exposes nowhere.
-  !Astrolabe carries that table and also handles minimap zoom, rotation, shape
-  and edge clamping. Available from
-  [Trimitor/WDM-addons](https://github.com/Trimitor/WDM-addons).
-- A server whose world database has the `quest_poi` table populated (stock
-  AzerothCore does). If the world map shows no numbered circles either, the
-  data is missing server-side — no client addon can invent it.
+Only one: a server whose world database has the `quest_poi` table populated
+(stock AzerothCore does). If the world map shows no numbered circles either,
+the data is missing server-side — no client addon can invent it.
 
-No server module is required. Everything comes from the client's own quest POI
-data.
+**No server module, and nothing else to install.** Astrolabe — which converts a
+normalised map coordinate into a minimap offset, handling zoom, rotation,
+minimap shape and edge clamping — ships inside the addon under
+`Libs/Astrolabe/`. If you also run the standalone `!Astrolabe` addon, DongleStub
+keeps whichever copy is newer and the other stands down; there is no conflict.
+See [`Libs/Astrolabe/README.md`](Libs/Astrolabe/README.md) for its origin and
+licence.
 
 ## Installation
 

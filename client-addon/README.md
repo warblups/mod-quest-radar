@@ -32,6 +32,32 @@ events it used to register), but it has not been re-tested since the
 restructure. To use it, it has to be renamed to `QuestRadar/` and its `.toc`
 matched to the folder name.
 
+## Settled: the search areas cannot be drawn client-side
+
+The translucent area the world map shows for an imprecise objective **cannot be
+put on the minimap without the module**. This was prototyped and tested in-game,
+not assumed — branch `proto/minimap-quest-blobs`.
+
+The client holds the point lists and `DrawQuestBlob` paints them, but no Lua
+function returns their geometry: the entire `QuestPOIFrame` surface on 3.3.5a is
+`DrawQuestBlob`, `GetNumTooltips`, `GetTooltipIndex` and the
+`Set*Texture`/`Set*Alpha` calls, none of which hands back a coordinate. The
+prototype therefore never asked where an area was — it sized a `QuestPOIFrame`
+like Blizzard's `WorldMapBlobFrame`, scaled it to the minimap's yards-per-pixel
+and anchored the player's position to the minimap centre.
+
+It renders in the right place at the right size. It also **bleeds well outside
+the minimap**: `DrawQuestBlob` does not confine itself to its frame's rectangle,
+and 3.3.5a has no `SetClipsChildren`. `SetMaskTexture` only masks the minimap's
+own terrain, not frames drawn over it, so reshaping the minimap does not help
+either.
+
+That leaves the approach the bridge-based variant already uses: a pre-rounded
+texture (`Icons/glow.blp`) drawn at the area's centre, sized to its radius —
+which needs that centre and radius **as numbers**. Only the server module
+provides them (`areaX`/`areaY`). This is now the module's strongest
+justification.
+
 ## Where this is heading
 
 The intended end state is a single addon that works standalone and upgrades

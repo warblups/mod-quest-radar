@@ -28,7 +28,7 @@ to get wrong on this client, and that broke earlier versions:
     it rather than approximated here.
 ---------------------------------------------------------------------------]]--
 
-local VERSION = "0.5.0"
+local VERSION = "0.6.0"
 
 local POI_PARENT_NAME = "QuestRadarPOIFrame"
 local MAX_POIS = 32     -- UI-QuestPoi-NumberIcons only carries the numbers 1..32
