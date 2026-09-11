@@ -28,7 +28,7 @@ to get wrong on this client, and that broke earlier versions:
     it rather than approximated here.
 ---------------------------------------------------------------------------]]--
 
-local VERSION = "0.8.1"
+local VERSION = "0.9.0"
 
 local POI_PARENT_NAME = "QuestRadarPOIFrame"
 local MAX_POIS = 32     -- UI-QuestPoi-NumberIcons only carries the numbers 1..32
@@ -339,6 +339,24 @@ local function CollectServer(lib, continent, zone)
     return out
 end
 
+-- The quest the player is currently looking at, so its icons can be picked out
+-- of the crowd the way the world map and the tracker already do. The world map's
+-- own selection wins when it has one; otherwise the quest log's.
+local function SelectedQuestID()
+    if WORLDMAP_SETTINGS and WORLDMAP_SETTINGS.selectedQuestId
+        and WORLDMAP_SETTINGS.selectedQuestId > 0 then
+        return WORLDMAP_SETTINGS.selectedQuestId
+    end
+    local index = GetQuestLogSelection()
+    if index and index > 0 then
+        local _, _, _, _, isHeader, _, _, _, questID = GetQuestLogTitle(index)
+        if not isHeader and questID and questID > 0 then
+            return questID
+        end
+    end
+    return nil
+end
+
 -- Returns false when it could not run and should be retried.
 local function Refresh()
     InitDB()
@@ -419,6 +437,7 @@ local function Refresh()
     end
 
     local used, placed = {}, 0
+    local selected = SelectedQuestID()
 
     for _, entry in ipairs(visible) do
         if placed >= MAX_POIS then break end
@@ -438,6 +457,13 @@ local function Refresh()
             end
             if button then
                 ownedButtons[button] = true
+                -- QuestPOI_DisplayButton has just deselected it, so this is the
+                -- moment to re-apply. Each of a quest's icons sits under its own
+                -- parent, and the selection is tracked per parent, so all of
+                -- them light up rather than just the last one.
+                if selected and entry.questID == selected and QuestPOI_SelectButton then
+                    QuestPOI_SelectButton(button)
+                end
                 local holder = GetHolder(placed + 1)
                 AttachPOI(holder, button, entry.questLogIndex, entry.title)
                 if lib:PlaceIconOnMinimap(holder, continent, zone, entry.posX, entry.posY) == 0 then
@@ -541,6 +567,12 @@ driver:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 -- is the only way to react immediately.
 hooksecurefunc("AddQuestWatch", Invalidate)
 hooksecurefunc("RemoveQuestWatch", Invalidate)
+
+-- Picking a quest in the log is a plain function call as well, so the highlight
+-- needs the same treatment to follow it without waiting for another event.
+if QuestLog_SetSelection then
+    hooksecurefunc("QuestLog_SetSelection", Invalidate)
+end
 
 InitDB()
 

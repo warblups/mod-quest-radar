@@ -61,6 +61,10 @@ Two equivalent ways in, both writing the same `QuestRadarDB`:
 
 `/qr arrows` is kept as an alias of `/qr edge`.
 
+Selecting a quest — in the quest log, or on the world map — lights up its icons
+on the minimap with Blizzard's own selection glow, the same one the world map
+uses. A quest split across several objectives lights all of them at once.
+
 ## Notes on 3.3.5a
 
 Three things are easy to get wrong on this client, and each one silently
