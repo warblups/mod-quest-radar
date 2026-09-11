@@ -10,9 +10,16 @@ companion **client addon** that shows these objectives as icons on the
 
 ## Screenshots
 
-| Minimap icon (numbered objective + area) | In-game view |
+| One icon per objective, labelled by quest | In-game view |
 |---|---|
-| ![Minimap icon closeup](scrn/minimap-icon-closeup.jpg) | ![In-game view](scrn/ingame-view.jpg) |
+| ![Minimap closeup](scrn/minimap-icon-closeup.jpg) | ![In-game view](scrn/ingame-view.jpg) |
+
+Quest 4 in the tracker, *Solanian's Belongings*, has three objectives in three
+different places — so the minimap carries **three icons all marked `4`**. The
+world map cannot show this: `QuestPOIGetIconInfo(questId)` returns a single
+position, so Blizzard places exactly one numbered circle per quest. Splitting
+them takes the server module, which reads the same `quest_poi` tables without
+that constraint.
 
 ## Why two parts (server module + client addon)
 

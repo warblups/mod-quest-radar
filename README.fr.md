@@ -10,9 +10,16 @@ la **minimap** (voir [`client-addon/QuestRadar/`](client-addon/QuestRadar)).
 
 ## Captures d'écran
 
-| Icône minimap (objectif numéroté + zone) | Vue en jeu |
+| Une icône par objectif, numérotée par quête | Vue en jeu |
 |---|---|
-| ![Icône minimap](scrn/minimap-icon-closeup.jpg) | ![Vue en jeu](scrn/ingame-view.jpg) |
+| ![Gros plan minimap](scrn/minimap-icon-closeup.jpg) | ![Vue en jeu](scrn/ingame-view.jpg) |
+
+La quête 4 du suivi, *Les possessions de Solanian*, a trois objectifs à trois
+endroits différents — le minimap porte donc **trois icônes marquées `4`**. La
+carte du monde ne sait pas le montrer : `QuestPOIGetIconInfo(questId)` ne rend
+qu'une position, et Blizzard place donc exactement une pastille numérotée par
+quête. Les séparer demande le module serveur, qui lit les mêmes tables
+`quest_poi` sans cette contrainte.
 
 ## Pourquoi deux parties (module serveur + addon client)
 
