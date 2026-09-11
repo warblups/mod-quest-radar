@@ -80,7 +80,13 @@ convention for "not a numbered objective" — is only drawn once the quest is
 complete, as the turn-in icon, because a numberless badge reads as a native NPC
 blip.
 
-Icon *numbers* stay sequential rather than following `objectiveIndex`:
-`QuestPOI_DisplayButton` caches its buttons by index, so two objectives sharing a
-number would share a button. The module's gain is the number of icons, not what
-is written in them.
+Icons are numbered **per quest, not per icon**: every objective of the same quest
+carries that quest's label, so three icons marked `4` read as one quest in three
+places rather than three unrelated errands. `QuestPOI_DisplayButton` caches its
+buttons under `"poi"..parentName..type.."_"..index`, so reusing a number means
+reusing an index — which is why the addon keeps several parent frames and draws
+the nth icon of a given number under the nth parent.
+
+The order is the objectives tracker's, taken from `GetNumQuestWatches` /
+`GetQuestIndexForWatch`. Without that the labels would follow the module's own
+sorting, which is by distance, rather than the list the player is reading.

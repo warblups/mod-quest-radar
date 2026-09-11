@@ -28,7 +28,7 @@ to get wrong on this client, and that broke earlier versions:
     it rather than approximated here.
 ---------------------------------------------------------------------------]]--
 
-local VERSION = "0.7.0"
+local VERSION = "0.8.0"
 
 local POI_PARENT_NAME = "QuestRadarPOIFrame"
 local MAX_POIS = 32     -- UI-QuestPoi-NumberIcons only carries the numbers 1..32
@@ -36,6 +36,7 @@ local REFRESH_THROTTLE = 0.35
 local EDGE_THROTTLE = 0.1
 local EDGE_ALPHA = 0.65
 local POI_SIZE = 32     -- QuestPOITemplate is 32x32
+local MAX_SHARED_LABEL = 8   -- how many icons may carry the same quest number
 
 local DEFAULTS = {
     enabled = true,
@@ -93,13 +94,27 @@ end
 --------------------------------------------------------------------------------
 
 -- Blizzard POI buttons are created under a named frame and cached by name. We
--- only need that frame as a namespace: each button is reparented to its own
+-- only need those frames as a namespace: each button is reparented to its own
 -- holder right away, so the holder can be scaled without disturbing the offsets
 -- Astrolabe computes (SetPoint offsets are read in the frame own scale).
-local poiParent = CreateFrame("Frame", POI_PARENT_NAME, Minimap)
-poiParent:SetWidth(1)
-poiParent:SetHeight(1)
-poiParent:SetPoint("CENTER", Minimap, "CENTER", 0, 0)
+--
+-- Several parents rather than one, because the cache key is
+-- "poi"..parentName..type.."_"..index: two icons sharing an index would share a
+-- button, and a quest with three objectives needs three icons all carrying that
+-- quest's number.
+local poiParents = {}
+
+local function POIParent(slot)
+    local name = POI_PARENT_NAME .. slot
+    if not poiParents[slot] then
+        local frame = CreateFrame("Frame", name, Minimap)
+        frame:SetWidth(1)
+        frame:SetHeight(1)
+        frame:SetPoint("CENTER", Minimap, "CENTER", 0, 0)
+        poiParents[slot] = frame
+    end
+    return name
+end
 
 local function GetHolder(index)
     local holder = holders[index]
@@ -178,7 +193,9 @@ local function ReleaseAll()
     end
     table.wipe(active)
     if QuestPOI_HideAllButtons then
-        QuestPOI_HideAllButtons(POI_PARENT_NAME)
+        for slot in pairs(poiParents) do
+            QuestPOI_HideAllButtons(POI_PARENT_NAME .. slot)
+        end
     end
 end
 
@@ -355,26 +372,63 @@ local function Refresh()
         source = "client"
     end
 
-    local numeric, completeIn, placed = 0, 0, 0
-
+    local visible = {}
     for _, entry in ipairs(entries) do
-        if placed >= MAX_POIS then break end
-
         local tracked = not DB.onlyTracked or IsQuestWatched(entry.questLogIndex)
         if tracked and (not entry.complete or DB.showCompleted) then
-            -- The counters only advance for icons we actually draw, so the
-            -- numbers match the objectives tracker sitting next to the minimap.
-            -- That is what WatchFrame does too; the world map numbers every
-            -- quest on the map instead, so the two can differ when something is
-            -- untracked. They are labels, not identities - the module's gain is
-            -- the number of icons, not what is written in them.
-            local button
+            entry.seq = #visible + 1
+            visible[#visible + 1] = entry
+        end
+    end
+
+    -- Number the way the objectives tracker does. The module returns its
+    -- objectives sorted by distance, so without this the labels would follow
+    -- how far away things are rather than the list the player is reading.
+    local watch = {}
+    for i = 1, GetNumQuestWatches() or 0 do
+        local index = GetQuestIndexForWatch(i)
+        if index then watch[index] = i end
+    end
+    table.sort(visible, function(a, b)
+        local wa = watch[a.questLogIndex] or (1000 + a.questLogIndex)
+        local wb = watch[b.questLogIndex] or (1000 + b.questLogIndex)
+        if wa ~= wb then return wa < wb end
+        return a.seq < b.seq   -- table.sort is not stable, so break ties explicitly
+    end)
+
+    -- One number per QUEST, not per icon: every objective of the same quest
+    -- carries that quest's label, so three icons marked "4" read as one quest in
+    -- three places instead of three unrelated errands.
+    local label, numeric, completeIn = {}, 0, 0
+    for _, entry in ipairs(visible) do
+        if not label[entry.questID] then
             if entry.complete then
                 completeIn = completeIn + 1
-                button = QuestPOI_DisplayButton(POI_PARENT_NAME, QUEST_POI_COMPLETE_IN, completeIn, entry.questID)
+                label[entry.questID] = -completeIn   -- negative = the turn-in icon
             else
                 numeric = numeric + 1
-                button = QuestPOI_DisplayButton(POI_PARENT_NAME, QUEST_POI_NUMERIC, numeric, entry.questID)
+                label[entry.questID] = numeric
+            end
+        end
+    end
+
+    local used, placed = {}, 0
+
+    for _, entry in ipairs(visible) do
+        if placed >= MAX_POIS then break end
+
+        local number = label[entry.questID]
+        local key = (number < 0 and "c" or "n") .. math.abs(number)
+        local slot = (used[key] or 0) + 1
+        used[key] = slot
+
+        if slot <= MAX_SHARED_LABEL then
+            local parent = POIParent(slot)
+            local button
+            if number < 0 then
+                button = QuestPOI_DisplayButton(parent, QUEST_POI_COMPLETE_IN, -number, entry.questID)
+            else
+                button = QuestPOI_DisplayButton(parent, QUEST_POI_NUMERIC, number, entry.questID)
             end
             if button then
                 local holder = GetHolder(placed + 1)
