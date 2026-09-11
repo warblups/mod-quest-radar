@@ -24,9 +24,10 @@ licence.
 
 ## Installation
 
-Copy the folder containing `QuestRadar.toc` and `QuestRadar.lua` into
-`World of Warcraft\Interface\AddOns\`, then make sure both **QuestRadar** and
-**!Astrolabe** are checked on the AddOns selection screen.
+Copy the folder containing `QuestRadar.toc` into
+`World of Warcraft\Interface\AddOns\`, then make sure **QuestRadar** is checked
+on the AddOns selection screen. Keep `Libs/` with it — that is where Astrolabe
+lives.
 
 After a *first* install, restart the client fully rather than `/reload` — this
 client only picks up new files at startup.
@@ -89,7 +90,13 @@ Whether a quest is tracked is purely client-side state. With `/qr tracked` on
 map, exactly like Blizzard's own `WatchFrame` does — the two can disagree when
 something is untracked. Turn it off to get the world map numbering back.
 
-The quest search *blobs* (`QuestPOIFrame:DrawQuestBlob`) are deliberately not
-rendered: 3.3.5 has no circular clipping for addon frames on the minimap, so a
-blob large enough to be meaningful always spills out of the minimap as a
-square.
+The quest search *blobs* — the translucent area the world map shows for an
+imprecise objective — are not rendered. This was prototyped and tested in-game
+rather than assumed: a `QuestPOIFrame` scaled to the minimap's yards-per-pixel
+does paint the area in the right place at the right size, but `DrawQuestBlob`
+does not confine itself to its frame's rectangle, so the area bleeds well
+outside the minimap. 3.3.5a has no `SetClipsChildren`, and `SetMaskTexture`
+masks only the minimap's own terrain, not frames drawn over it — so reshaping
+the minimap does not help either. Drawing these areas needs their centre and
+radius as numbers, which no Lua function on this client returns; see
+[`../README.md`](../README.md).
