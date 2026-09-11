@@ -63,10 +63,13 @@ local showCompleted = CreateCheckbox("showCompleted", onlyTracked, "Afficher les
 local showOffscreen = CreateCheckbox("showOffscreen", showCompleted, "Afficher les objectifs hors de portee",
     "Les objectifs trop loin se collent au bord du minimap, legerement attenues.")
 
+local useModule = CreateCheckbox("useModule", showOffscreen, "Utiliser le module serveur si present",
+    "Avec le module mod-quest-radar sur le royaume : une icone par objectif au lieu d'une par quete. Sans lui, aucun effet.")
+
 -- Icon size. The slider is only committed on release: dragging it would
 -- otherwise rebuild every icon on each pixel of travel.
 local scale = CreateFrame("Slider", "QuestRadarOptionsScale", panel, "OptionsSliderTemplate")
-scale:SetPoint("TOPLEFT", showOffscreen, "BOTTOMLEFT", 6, -24)
+scale:SetPoint("TOPLEFT", useModule, "BOTTOMLEFT", 6, -24)
 scale:SetMinMaxValues(0.5, 3)
 scale:SetValueStep(0.1)
 scale:SetWidth(200)
