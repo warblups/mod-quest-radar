@@ -163,10 +163,15 @@ frame:RegisterEvent("ADDON_LOADED")
 frame:RegisterEvent("PLAYER_ENTERING_WORLD")   -- login, hearthstone, zone loading
 frame:RegisterEvent("ZONE_CHANGED_NEW_AREA")   -- zone change without a loading screen
 frame:RegisterEvent("QUEST_ACCEPTED")
-frame:RegisterEvent("QUEST_TURNED_IN")
-frame:RegisterEvent("QUEST_REMOVED")
+-- QUEST_TURNED_IN, QUEST_REMOVED and QUEST_WATCH_LIST_CHANGED do NOT exist on
+-- a genuine 3.3.5a client - they arrived with Cataclysm. None of the three
+-- strings is present in wow.exe 12340, and registering an unknown event
+-- raises, which aborted the rest of this file silently (scriptErrors defaults
+-- to 0). QUEST_FINISHED covers the turn-in, QUEST_LOG_UPDATE covers a quest
+-- leaving the log, and QUEST_WATCH_UPDATE is the 3.3.5 tracking event.
+frame:RegisterEvent("QUEST_FINISHED")
 frame:RegisterEvent("QUEST_LOG_UPDATE")
-frame:RegisterEvent("QUEST_WATCH_LIST_CHANGED") -- a quest gets tracked/untracked
+frame:RegisterEvent("QUEST_WATCH_UPDATE") -- a quest gets tracked/untracked
 frame:RegisterEvent("CHAT_MSG_ADDON")
 
 -- In addition to the events above, a sync is also requested every few
@@ -210,7 +215,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
         return
     end
 
-    if event == "QUEST_WATCH_LIST_CHANGED" then
+    if event == "QUEST_WATCH_UPDATE" then
         -- Whether a quest is tracked is a 100% client-side state, the
         -- server has no notion of it: no need to re-sync, just re-filter/
         -- redraw with the data already received (cf.

@@ -30,20 +30,33 @@ Ce module fournit donc :
    quête sont connus sur la carte actuelle du joueur, et les affiche dans le
    chat (`.questradar`) ou via un **pont de communication addon**
    (`CHAT_MSG_ADDON` / `LANG_ADDON`) vers un addon client.
-2. **L'addon client** (`client-addon/QuestRadar/`) : interroge ce pont à
-   chaque changement de zone/quête (et périodiquement) et dessine, sur la
-   minimap, une icône par objectif **suivi** (comportement par défaut —
-   configurable) (plus une zone circulaire quand l'objectif n'est pas un
-   point précis), à partir d'un delta joueur/objectif calculé côté serveur —
-   sans dépendre d'aucune bibliothèque Lua tierce (voir le README de l'addon
-   pour savoir pourquoi). Configurable via `/qr` ou un panneau d'options
-   natif (Échap > Interface > Addons). La carte du monde n'a pas besoin
+2. **L'addon client** (`client-addon/QuestRadar/`) : dessine les objectifs
+   sous forme d'icônes sur la minimap. La carte du monde n'a pas besoin
    d'être gérée : WotLK y dessine déjà nativement les POI de quête.
-   **Testé en conditions réelles** sur un serveur AzerothCore 3.3.5a — voir
-   le [README dédié](client-addon/QuestRadar/README.md) pour l'installation
-   et l'historique des tentatives (une bibliothèque tierce, HereBeDragons, a
-   d'abord été essayée puis abandonnée après plusieurs incompatibilités
-   observées en jeu avec un client 3.3.5a authentique).
+
+### L'addon client ne dépend plus du module
+
+L'addon livré dans [`client-addon/QuestRadar/`](client-addon/QuestRadar) lit
+désormais les données POI **que le client 3.3.5a possède déjà**
+(`QuestMapUpdateAllQuests` / `QuestPOIUpdateIcons` / `QuestPOIGetIconInfo`)
+et les projette sur la minimap avec
+[!Astrolabe](https://github.com/Trimitor/WDM-addons). Il fonctionne sur
+n'importe quel AzerothCore dont la table `quest_poi` est remplie — **aucun
+module serveur, aucune recompilation**. Vérifié en jeu.
+
+L'addon d'origine, basé sur le pont, est conservé dans
+[`client-addon/server-module-variant/`](client-addon/server-module-variant).
+Il est gardé parce qu'il sait encore faire une chose hors de portée de l'API
+client : le Lua 3.3.5a n'expose qu'**un POI par quête**, là où le module peut
+fournir **un groupe par objectif** plus les zones circulaires. Réunir les
+deux — autonome par défaut, par objectif quand le module est détecté — est
+l'état visé, et ce n'est pas encore fait. Voir
+[`client-addon/README.md`](client-addon/README.md).
+
+À noter : le module et le client lisent la **même** source, les tables
+`quest_poi` / `quest_poi_points`. La justification d'origine du module — le
+client ne peut pas connaître sa position en yards, `UnitPosition` n'existant
+pas en 3.3.5a — ne tient plus : !Astrolabe s'en charge.
 
 ## Fonctionnalités
 
@@ -113,8 +126,15 @@ fonctionner seul, sans lui, via `.questradar`) :
 cp -r mod-quest-radar/client-addon/QuestRadar/ <client_wow>/Interface/AddOns/
 ```
 
-Voir le [README de l'addon](client-addon/QuestRadar/README.md) pour le
-détail de l'installation et son statut.
+Il lui faut également **`!Astrolabe`** dans le même `Interface/AddOns/`,
+activé sur l'écran de sélection des addons — c'est lui qui convertit une
+coordonnée de POI en position sur la minimap. Disponible dans
+[Trimitor/WDM-addons](https://github.com/Trimitor/WDM-addons).
+
+Cet addon n'a **pas** besoin du module serveur : il lit les données POI du
+client lui-même. Voir le [README de l'addon](client-addon/QuestRadar/README.md),
+et [`client-addon/README.md`](client-addon/README.md) pour la différence avec
+la variante par pont, conservée.
 
 ## Structure des fichiers
 
@@ -130,13 +150,17 @@ mod-quest-radar/
 │   ├── QuestRadar.h           # config + structures + prototypes
 │   ├── QuestRadar.cpp         # logique : recherche des objectifs + formatage du protocole addon
 │   └── QuestRadarLoader.cpp   # hooks PlayerScript/WorldScript, commande .questradar, pont addon
-└── client-addon/
-    └── QuestRadar/             # addon Lua client (voir son propre README)
+└── client-addon/              # voir client-addon/README.md - un SEUL des deux peut être installé
+    ├── QuestRadar/            # LIVRÉ : autonome, lit les données POI du client lui-même
+    │   ├── QuestRadar.toc
+    │   ├── QuestRadar.lua     # énumération des POI + projection minimap via !Astrolabe
+    │   └── README.md
+    └── server-module-variant/ # RÉFÉRENCE : récupère ses positions via ce module
         ├── QuestRadar.toc
-        ├── Core.lua             # protocole addon (envoi de REQ, réception de ME/OBJ/END), réglages
-        ├── Minimap.lua          # icônes + zones minimap (delta joueur/objectif, sans lib Lua tierce)
-        ├── Options.lua          # panneau d'options natif (Échap > Interface > Addons)
-        └── Icons/               # glow.blp (image importée, voir Icons/README.md)
+        ├── Core.lua           # protocole addon (envoi de REQ, réception de ME/OBJ/END), réglages
+        ├── Minimap.lua        # icônes + zones minimap (delta joueur/objectif)
+        ├── Options.lua        # panneau d'options natif (Échap > Interface > Addons)
+        └── Icons/             # glow.blp (image importée, voir Icons/README.md)
 ```
 
 ## Hooks utilisés
