@@ -18,12 +18,21 @@
 -- asset is Icons/glow.blp (an image, no code), for the area - see
 -- Icons/README.md.
 --
+-- A native alternative (Blizzard's own QuestPOIFrame:DrawQuestBlob, the
+-- exact polygon shape the world map draws for a quest's search area) was
+-- tried here and reverted before ever reaching a live test: the reference
+-- it was adapted from (mod-quest-radar-v2) dropped that same technique
+-- entirely in its own next iteration, without saying why - strong enough a
+-- signal of an unreliable native API on this client build to not risk it
+-- here too. This hand-approximated circle is a known, already-tested
+-- quantity instead.
+--
 -- The world map doesn't need to be handled here: WotLK already draws quest
 -- POIs on it natively (unlike the minimap, which never did before
 -- Cataclysm).
 
 local Minimap = Minimap
-local sin, cos = math.sin, math.cos
+local sin, cos, floor = math.sin, math.cos, math.floor
 
 -- Minimap visible diameter, in yards, per zoom level (0 = fully zoomed out,
 -- 5 = fully zoomed in) and whether indoors or outdoors. These are game
@@ -64,6 +73,29 @@ local ICON_SIZE = 20
 -- (QuestPOI) for the same objective.
 local ICON_COLOR = { 1, 0.82, 0 }
 
+-- The objective number is Blizzard's own numbered-icon overlay, not a
+-- hand-drawn FontString (an earlier version of this file used one - a
+-- digit ("2") occasionally rendered looking mirrored in-game at this
+-- icon's small size). This is the exact texture/math the world map itself
+-- uses for its yellow circled numbers (QuestPOI_DisplayButton/QuestPOI.xml
+-- in wowgaming/3.3.5-interface-files, verified there rather than guessed):
+-- an 8-columns-wide grid, with numbers occupying the bottom half of the
+-- texture (yOffset starts at 0.5, i.e. rows 4-7 of an 8x8 grid - the top
+-- half holds other, non-numeric POI markers Blizzard reuses this atlas
+-- for). Since it's a stock client file, nothing needs to be vendored here.
+local NUMBER_TEXTURE = "Interface\\WorldMap\\UI-QuestPoi-NumberIcons"
+local NUMBER_ICONS_PER_ROW = 8
+local NUMBER_ICON_SIZE = 0.125 -- 1/8th of the texture, per axis
+local NUMBER_ROW_OFFSET = 0.5
+local function SetIconNumber(icon, number)
+    local buttonIndex = number - 1
+    local col = buttonIndex % NUMBER_ICONS_PER_ROW
+    local row = floor(buttonIndex / NUMBER_ICONS_PER_ROW)
+    local xOffset = col * NUMBER_ICON_SIZE
+    local yOffset = NUMBER_ROW_OFFSET + row * NUMBER_ICON_SIZE
+    icon.number:SetTexCoord(xOffset, xOffset + NUMBER_ICON_SIZE, yOffset, yOffset + NUMBER_ICON_SIZE)
+end
+
 -- Below this radius (in yards), the area wouldn't be visually distinct from
 -- the precise point - not worth drawing it.
 local MIN_AREA_RADIUS_TO_DRAW = 15
@@ -75,12 +107,28 @@ local MAX_AREA_DIAMETER_FRACTION = 0.8
 local ZONE_COLOR = { 0.4, 0.75, 1.0 }
 local ZONE_ALPHA = 0.55
 
--- icons[poiId] = frame (precise point); zones[poiId] = frame (area circle,
--- or nil if areaRadius was 0/too small for this group). Keyed by poiId (the
--- `quest_poi` group, cf. Core.lua/QuestRadar.h), not by questId: a quest
--- with several distinct objectives shows an independent icon per
--- objective, not a single one that jumps between them (observed in-game -
--- see the history in README.md).
+-- A color-per-quest palette (icon badge + area fill) and a dashed boundary
+-- ring traced around the area's true radius were both tried here. Reverted
+-- back to a single fixed gold/blue pair: in a hub with several tracked
+-- quests at once, the different colors plus each quest's own ring
+-- overlapping the others turned into visual noise (scattered,
+-- mismatched-looking dots) rather than the clearer picture intended - worse
+-- than what it was meant to improve on. Not worth re-attempting without
+-- also capping how many zones can be shown at once.
+
+-- icons[key] = frame (precise point); zones[key] = frame (area circle, or
+-- nil if areaRadius was 0/too small for this group). `key` is
+-- "<questId>:<poiId>", NOT poiId alone: `quest_poi.Id` is only unique
+-- *within* a single quest (it restarts at 0 for every quest's own POI list,
+-- cf. ObjectMgr::GetQuestPOIVector being looked up per-quest server-side) -
+-- keying purely by poiId made two different quests that each have a single,
+-- simple objective (by far the most common case, poiId 0 on both) collide
+-- into the very same icon/zone frame, so only the last one processed each
+-- refresh actually showed up (observed in-game: with two active quests on
+-- the same map, only one of their two badges - "1"/"2" - ever appeared).
+local function ObjKey(obj)
+    return obj.questId .. ":" .. obj.poiId
+end
 local icons = {}
 local zones = {}
 
@@ -101,12 +149,15 @@ local function CreateIconFrame()
 
     -- Objective number (obj.objectiveIndex + 1) instead of a generic "?"
     -- icon: the same number natively shown in the yellow circle on the
-    -- world map for this quest (cf. QuestPOI server-side, QuestRadar.h).
-    -- Created above the badge (same OVERLAY sub-layer, but the texture was
-    -- created first so it's drawn underneath).
-    icon.number = icon:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    -- world map for this quest (cf. QuestPOI server-side, QuestRadar.h) -
+    -- and, since NUMBER_TEXTURE above, drawn with Blizzard's own asset for
+    -- it. Created above the badge (same OVERLAY sub-layer, but the texture
+    -- was created first so it's drawn underneath); set via SetIconNumber
+    -- once obj.objectiveIndex is known (RefreshIcons).
+    icon.number = icon:CreateTexture(nil, "OVERLAY")
+    icon.number:SetTexture(NUMBER_TEXTURE)
+    icon.number:SetSize(ICON_SIZE * 0.7, ICON_SIZE * 0.7)
     icon.number:SetPoint("CENTER", icon, "CENTER")
-    icon.number:SetTextColor(0, 0, 0, 1)
 
     icon:EnableMouse(true)
     return icon
@@ -204,9 +255,12 @@ local function PlaceIconOnMinimap(icon, objX, objY, playerX, playerY)
     icon:Show()
 end
 
--- Positions and sizes an objective's area circle. Unlike the precise
--- point, the area simply hides when out of range instead of clamping to
--- the edge (an area "stuck" to the edge wouldn't make visual sense).
+-- Positions and sizes an objective's area circle. Like the precise point,
+-- it's clamped so it stays fully inside the minimap's round edge rather
+-- than bleeding past it (see the clamp comment below) - but only up to a
+-- margin: once the objective is truly far out of range, it hides instead
+-- of sitting clamped at the edge forever (unlike the icon), since a big
+-- area "stuck" flush against the border wouldn't make visual sense.
 local function PlaceZoneOnMinimap(zone, areaX, areaY, areaRadius, playerX, playerY)
     local diffX, diffY, minimapWidth, minimapHeight, mapRadius = ComputeMinimapDelta(areaX, areaY, playerX, playerY)
 
@@ -224,12 +278,36 @@ local function PlaceZoneOnMinimap(zone, areaX, areaY, areaRadius, playerX, playe
     local diameterPx = math.min(
         radiusFraction * 2 * minimapWidth,
         MAX_AREA_DIAMETER_FRACTION * minimapWidth * 2)
+    local radiusPx = diameterPx / 2
+
+    -- Clamp the circle's *center* so the whole fill stays inside the
+    -- minimap's own round edge, instead of just clamping how far past it
+    -- the center may go (the old margin above only decided when to hide,
+    -- not how far the visible circle could bleed past the round border into
+    -- the square black corners behind it - observed in-game). Same idea as
+    -- PlaceIconOnMinimap's edge clamp, just against a smaller radius
+    -- (minimapWidth - radiusPx instead of the full minimapWidth), so a
+    -- big/off-center area gets pulled inward rather than resized.
+    local centerPx, centerPy = diffX * minimapWidth, diffY * minimapHeight
+    local centerDistPx = (centerPx * centerPx + centerPy * centerPy) ^ 0.5
+    local maxCenterDistPx = math.max(minimapWidth - radiusPx, 0)
+    -- centerDistPx > 0 guard: without it, an objective centered exactly on
+    -- the player (a real case - e.g. standing inside a small-radius area)
+    -- divides by zero, and the resulting NaN fed into SetPoint below breaks
+    -- rendering - observed in-game as icons/zones failing to (re)position
+    -- at all, sometimes for every objective processed afterward in the same
+    -- pass (one bad SetPoint call errors out of the whole loop).
+    if centerDistPx > 0 and centerDistPx > maxCenterDistPx then
+        local scale = maxCenterDistPx / centerDistPx
+        centerPx = centerPx * scale
+        centerPy = centerPy * scale
+    end
 
     zone:SetSize(diameterPx, diameterPx)
     zone.texture:SetSize(diameterPx, diameterPx)
 
     zone:ClearAllPoints()
-    zone:SetPoint("CENTER", Minimap, "CENTER", diffX * minimapWidth, diffY * minimapHeight)
+    zone:SetPoint("CENTER", Minimap, "CENTER", centerPx, centerPy)
     zone:Show()
 end
 
@@ -269,13 +347,13 @@ end
 -- Hides and forgets every icon/area (module disabled, or no objective left
 -- in the last sync).
 local function ClearAll()
-    for poiId, icon in pairs(icons) do
+    for key, icon in pairs(icons) do
         icon:Hide()
-        icons[poiId] = nil
+        icons[key] = nil
     end
-    for poiId, zone in pairs(zones) do
+    for key, zone in pairs(zones) do
         zone:Hide()
-        zones[poiId] = nil
+        zones[key] = nil
     end
 end
 
@@ -287,35 +365,35 @@ function QuestRadar.RefreshIcons()
 
     local objectives = QuestRadar.objectives
 
-    -- Objective groups to show (by poiId, not by questId - a quest can have
-    -- several groups, each with its own icon): present in the last sync,
-    -- tracked if QuestRadar.db.onlyTracked is enabled (/qr tracked on|off) -
-    -- otherwise everything the server knows for this map is shown -, and
-    -- with an objectiveIndex >= 0 (a negative index, e.g. a generic quest
-    -- turn-in spot, has no number to show - observed in-game: a numberless
-    -- badge still showed up and was mistaken for a native NPC blip; not
-    -- worth showing it at all).
-    local shownPoi = {}
+    -- Objective groups to show (by ObjKey, not poiId alone - see the icons/
+    -- zones comment above): present in the last sync, tracked if
+    -- QuestRadar.db.onlyTracked is enabled (/qr tracked on|off) - otherwise
+    -- everything the server knows for this map is shown -, and with an
+    -- objectiveIndex >= 0 (a negative index, e.g. a generic quest turn-in
+    -- spot, has no number to show - observed in-game: a numberless badge
+    -- still showed up and was mistaken for a native NPC blip; not worth
+    -- showing it at all).
+    local shownKeys = {}
     for _, obj in ipairs(objectives) do
         local tracked = not QuestRadar.db.onlyTracked or IsQuestTracked(obj.questId)
         if tracked and obj.objectiveIndex and obj.objectiveIndex >= 0 then
-            shownPoi[obj.poiId] = true
+            shownKeys[ObjKey(obj)] = true
         end
     end
 
     -- Removes icons/areas that shouldn't show anymore (quest turned
     -- in/abandoned, no longer tracked, or the area was disabled between
     -- two calls).
-    for poiId, icon in pairs(icons) do
-        if not shownPoi[poiId] then
+    for key, icon in pairs(icons) do
+        if not shownKeys[key] then
             icon:Hide()
-            icons[poiId] = nil
+            icons[key] = nil
         end
     end
-    for poiId, zone in pairs(zones) do
-        if not shownPoi[poiId] or not QuestRadar.db.showArea then
+    for key, zone in pairs(zones) do
+        if not shownKeys[key] or not QuestRadar.db.showArea then
             zone:Hide()
-            zones[poiId] = nil
+            zones[key] = nil
         end
     end
 
@@ -324,16 +402,17 @@ function QuestRadar.RefreshIcons()
     end
 
     for _, obj in ipairs(objectives) do
-      if shownPoi[obj.poiId] then
-        local icon = icons[obj.poiId]
+      local key = ObjKey(obj)
+      if shownKeys[key] then
+        local icon = icons[key]
         if not icon then
             icon = CreateIconFrame()
-            icons[obj.poiId] = icon
+            icons[key] = icon
         end
         SetIconTooltip(icon, obj)
-        -- shownPoi already filters out negative objectiveIndex values (see
+        -- shownKeys already filters out negative objectiveIndex values (see
         -- above): obj.objectiveIndex is always >= 0 here.
-        icon.number:SetText(tostring(obj.objectiveIndex + 1))
+        SetIconNumber(icon, obj.objectiveIndex + 1)
         -- Points to this group's stable center (areaX/areaY - simply
         -- equals (x,y) when it only has one point), not the precise
         -- nearest point (obj.x/obj.y): the latter can "jump" from one
@@ -345,15 +424,15 @@ function QuestRadar.RefreshIcons()
         PlaceIconOnMinimap(icon, obj.areaX, obj.areaY, QuestRadar.playerX, QuestRadar.playerY)
 
         if HasArea(obj) then
-            local zone = zones[obj.poiId]
+            local zone = zones[key]
             if not zone then
                 zone = CreateZoneFrame()
-                zones[obj.poiId] = zone
+                zones[key] = zone
             end
             PlaceZoneOnMinimap(zone, obj.areaX, obj.areaY, obj.areaRadius, QuestRadar.playerX, QuestRadar.playerY)
-        elseif zones[obj.poiId] then
-            zones[obj.poiId]:Hide()
-            zones[obj.poiId] = nil
+        elseif zones[key] then
+            zones[key]:Hide()
+            zones[key] = nil
         end
       end
     end
@@ -382,12 +461,13 @@ updateFrame:SetScript("OnUpdate", function(self, elapsed)
     end
 
     for _, obj in ipairs(QuestRadar.objectives) do
-        local icon = icons[obj.poiId]
+        local key = ObjKey(obj)
+        local icon = icons[key]
         if icon then
             PlaceIconOnMinimap(icon, obj.areaX, obj.areaY, QuestRadar.playerX, QuestRadar.playerY)
         end
 
-        local zone = zones[obj.poiId]
+        local zone = zones[key]
         if zone then
             PlaceZoneOnMinimap(zone, obj.areaX, obj.areaY, obj.areaRadius, QuestRadar.playerX, QuestRadar.playerY)
         end
@@ -402,8 +482,9 @@ function QuestRadar.DebugInfo()
         tostring(Minimap:GetZoom())))
 
     for _, obj in ipairs(QuestRadar.objectives) do
-        local icon = icons[obj.poiId]
-        local zone = zones[obj.poiId]
+        local key = ObjKey(obj)
+        local icon = icons[key]
+        local zone = zones[key]
         DEFAULT_CHAT_FRAME:AddMessage(string.format(
             "|cffffcc00[QuestRadar]|r [debug] quest %d poi=%s (%s) num=%s x=%.1f y=%.1f dist=%.1f areaRadius=%s tracked=%s: icon=%s zone=%s",
             obj.questId, tostring(obj.poiId), obj.title or "?", tostring((obj.objectiveIndex or 0) + 1), obj.x, obj.y, obj.distance or -1,
